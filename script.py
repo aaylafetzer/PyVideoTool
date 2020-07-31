@@ -59,7 +59,7 @@ while True:
 
     # Cut and scale frame
     outFrame = frame[0:cropRes[1], 0:cropRes[0]] if args.crop else frame
-    if cropRes != outRes:
+    if args.rescale:
         outFrame = cv2.resize(outFrame, (outRes[0], outRes[1]), fx=0, fy=0, interpolation=cv2.INTER_CUBIC)
 
     # Write frame to file
