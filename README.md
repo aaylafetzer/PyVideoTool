@@ -14,7 +14,7 @@ VideoTool is now ready to use
 For simple cropping, VideoTool accepts several arguments that can also be displayed by running the script with the -h argument.
 
 ### Transformations
- - ``--crop | -c`` Will select only an x-separated resolution from the top left corner of the frame
+ - ``--slice | -s`` When given colon-separated pixel locations, the rectangle between them will be cropped as the output video
  - ``--rescale | -r`` Will resize the output video to the given x-separated resolution
  - ``--framerange | -f`` Will export only the frames between the colon-separated integers. Use x:-1 to export from frame x to the end of the video.
 ### Other arguments

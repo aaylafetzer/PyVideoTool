@@ -6,11 +6,11 @@ args = argparse.ArgumentParser()
 args.add_argument("path", help="path to the file being cropped")
 args.add_argument("outpath", help="path of the cropped file")
 transformGroup = args.add_argument_group("Transformations")
-transformGroup.add_argument("--crop", "-c", help="x-separated integer resolution to crop video to (i.e. 1920x1080)",
+transformGroup.add_argument("--slice", "-s", help="colon-separated comma-separated integer slice",
                             required=False)
 args.add_argument("--codec", help="4 character code of the codec used to compress the frames",
                   required=False, default='mp4v')
-transformGroup.add_argument("--rescale", "-r", help="x-separated integer to scale output video to (i.e. 1280x720)",
+transformGroup.add_argument("--rescale", "-r", help="x-separated integer to scale output video to",
                             required=False)
 transformGroup.add_argument("--framerange", "-f", help="Colon-separated frame numbers to select. -1 can be used for "
                                                        "the second frame to run until the end of the video.",
@@ -22,13 +22,13 @@ cap = cv2.VideoCapture(args.path)
 totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
 frameRate = cap.get(cv2.CAP_PROP_FPS)
 frameWidth, frameHeight = cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+bitrate = cap.get(cv2.CAP_PROP_BITRATE)
 
 # Define resolution variables
-cropRes = [int(i) for i in args.crop.split("x")] if args.crop else [frameWidth, frameHeight]
-outRes = [int(i) for i in args.rescale.split("x")] if args.rescale else cropRes
-if cropRes[0] > frameWidth or cropRes[1] > frameHeight:  # Make sure the crop settings are valid
-    print("Crop can't be larger than frame!")
-    exit(1)
+sliceArea = np.array([i.split(",") for i in [pair for pair in args.slice.split(":")]] if args.slice
+                     else [[0, frameWidth], [0, frameHeight]]).astype(int)
+outRes = [int(i) for i in args.rescale.split("x")] if args.rescale \
+    else [sliceArea[1][0] - sliceArea[0][0], sliceArea[1][1] - sliceArea[0][1]]
 
 # Parse frameRange argument
 frameRange = [int(i) for i in args.framerange.split(":")] if args.framerange else [0, totalFrames]
@@ -38,6 +38,12 @@ totalFrames = frameRange[1] - frameRange[0]
 # Create output file
 fourCC = cv2.VideoWriter_fourcc(*args.codec)
 out = cv2.VideoWriter(args.outpath, fourCC, frameRate, (outRes[0], outRes[1]))
+
+# Validity Checks
+aspectRatio = (sliceArea[0][0] - sliceArea[1][0]) / (sliceArea[0][1] - sliceArea[1][1])
+outputAspectRatio = outRes[0] / outRes[1]
+if aspectRatio != outputAspectRatio:
+    print("WARNING: Output resolution and Slice resolution have different aspect ratios! This may lead to distortions.")
 
 # Main loop
 i = 0
@@ -57,8 +63,10 @@ while True:
     if i > frameRange[0]:
         print(f"{np.round((i / frameRange[1]) * 100, 2)}%", end="\r")
 
-    # Cut and scale frame
-    outFrame = frame[0:cropRes[1], 0:cropRes[0]] if args.crop else frame
+    # Frame processing
+    outFrame = frame
+    if args.slice:
+        outFrame = outFrame[sliceArea[0][1]:sliceArea[1][1], sliceArea[0][0]:sliceArea[1][0]]
     if args.rescale:
         outFrame = cv2.resize(outFrame, (outRes[0], outRes[1]), fx=0, fy=0, interpolation=cv2.INTER_CUBIC)
 

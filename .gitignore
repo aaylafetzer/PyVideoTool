@@ -142,3 +142,4 @@ cython_debug/
 
 # Go away
 .idea/
+*.mp4
