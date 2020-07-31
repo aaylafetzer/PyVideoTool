@@ -8,15 +8,16 @@ args.add_argument("outpath", help="path of the cropped file")
 transformGroup = args.add_argument_group("Transformations")
 transformGroup.add_argument("--slice", "-s", help="colon-separated comma-separated integer slice",
                             required=False)
-args.add_argument("--codec", help="4 character code of the codec used to compress the frames",
-                  required=False, default='mp4v')
 transformGroup.add_argument("--rescale", "-r", help="x-separated integer to scale output video to",
                             required=False)
-transformGroup.add_argument("--framerange", "-f", help="Colon-separated frame numbers to select. -1 can be used for "
-                                                       "the second frame to run until the end of the video.",
-                            required=False)
+cutGroup = args.add_mutually_exclusive_group()
+cutGroup.add_argument("--framerange", "-f", help="Colon-separated frame numbers to select. -1 can be used for "
+                                                 "the second frame to run until the end of the video.", required=False)
+cutGroup.add_argument("--timerange", help="Colon-separated numbers (in seconds) to select. -1 can be used to "
+                                          "run until the end of the video.", required=False)
+args.add_argument("--codec", help="4 character code of the codec used to compress the frames",
+                  required=False, default='mp4v')
 args = args.parse_args()
-
 # Load video file and define relevant variables
 cap = cv2.VideoCapture(args.path)
 totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -31,8 +32,10 @@ outRes = [int(i) for i in args.rescale.split("x")] if args.rescale \
     else [sliceArea[1][0] - sliceArea[0][0], sliceArea[1][1] - sliceArea[0][1]]
 
 # Parse frameRange argument
-frameRange = [int(i) for i in args.framerange.split(":")] if args.framerange else [0, totalFrames]
-frameRange[1] = totalFrames if frameRange[1] == -1 else frameRange[1]
+frameRange = [int(i) for i in args.framerange.split(":")] if args.framerange else \
+    [int(float(i)*frameRate) for i in args.timerange.split(":")] if args.timerange else [0, totalFrames]
+
+frameRange[1] = totalFrames if frameRange[1] < 0 else frameRange[1]
 totalFrames = frameRange[1] - frameRange[0]
 
 # Create output file
@@ -44,22 +47,24 @@ aspectRatio = (sliceArea[0][0] - sliceArea[1][0]) / (sliceArea[0][1] - sliceArea
 outputAspectRatio = outRes[0] / outRes[1]
 if aspectRatio != outputAspectRatio:
     print("WARNING: Output resolution and Slice resolution have different aspect ratios! This may lead to distortions.")
+if frameRange[1] < frameRange[0]:
+    print("ERROR: Cut can't begin after it ends!")
+    exit(128)
 
 # Main loop
 i = 0
-while True:
+while cap.isOpened():
     # Read frame
     ret, frame = cap.read()
-    if frame is None:
+    if not ret:
         exit(0)
 
     # Progress meter
     i += 1
-    if args.framerange:
-        if i < frameRange[0]:
-            continue
-        if i > frameRange[1]:
-            exit(0)
+    if i < frameRange[0]:
+        continue
+    if i > frameRange[1]:
+        exit(0)
     if i > frameRange[0]:
         print(f"{np.round((i / frameRange[1]) * 100, 2)}%", end="\r")
 
