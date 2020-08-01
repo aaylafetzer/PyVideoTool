@@ -29,10 +29,10 @@ frameWidth, frameHeight = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv
 
 # Define resolution variables
 if args.slice:
-    sliceArea = [i.split(",") for i in [pair for pair in args.slice.split(":")]]
+    sliceArea = [np.array(i.split(",")).astype(np.int) for i in [pair for pair in args.slice.split(":")]]
 else:
     sliceArea = [[0, frameWidth], [0, frameHeight]]  # No slice was defined, so the crop is the whole frame
-sliceArea = np.array(sliceArea).astype(int)  # Convert strings in array to integers
+sliceArea = np.array(sliceArea)  # Convert strings in array to integers
 
 # Is this being scaled? If not, output resolution is the frame size
 outRes = [int(i) for i in args.rescale.split("x")] if args.rescale else [sliceArea[1][0], sliceArea[1][1]]
@@ -67,25 +67,32 @@ i = 0
 process = (
     ffmpeg
         .input('pipe:', format='rawvideo', s='{}x{}'.format(outRes[0], outRes[1]),
-               pix_fmt="bgr24" if args.swaprb else "rgb24")
-        .output(args.outpath, r=frameRate)
+               pix_fmt="rgb24" if args.swaprb else "bgr24", r=frameRate)
+        .output(args.outpath)
         .run_async(pipe_stdin=True, overwrite_output=True)
 )
-
+i = 0
 while cap.isOpened():
     # Read frame
     ret, frame = cap.read()
+    i += 1
     if not ret:
         break
 
-    # Frame processing
-    outFrame = frame
-    if args.slice:
-        outFrame = outFrame[sliceArea[0][1]:sliceArea[1][1], sliceArea[0][0]:sliceArea[1][0]]
-    if args.rescale:
-        outFrame = cv2.resize(outFrame, (outRes[0], outRes[1]), fx=0, fy=0, interpolation=cv2.INTER_CUBIC)
-    # Write frame to file
-    process.stdin.write(outFrame.tobytes())
+    # Frame cut
+    if i < frameRange[0]:
+        continue
+    elif i > frameRange[1]:
+        break
+    else:
+        # Frame processing
+        outFrame = frame
+        if args.slice:
+            outFrame = outFrame[sliceArea[0][1]:sliceArea[1][1], sliceArea[0][0]:sliceArea[1][0]]
+        if args.rescale:
+            outFrame = cv2.resize(outFrame, (outRes[0], outRes[1]), fx=0, fy=0, interpolation=cv2.INTER_CUBIC)
+        # Write frame to file
+        process.stdin.write(outFrame.tobytes())
 
 process.stdin.close()
 process.wait()
