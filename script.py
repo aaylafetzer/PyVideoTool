@@ -1,5 +1,8 @@
 import argparse
+
 import cv2
+import ffmpeg
+from glob import glob
 import numpy as np
 
 args = argparse.ArgumentParser()
@@ -15,58 +18,65 @@ cutGroup.add_argument("--framerange", "-f", help="Colon-separated frame numbers 
                                                  "the second frame to run until the end of the video.", required=False)
 cutGroup.add_argument("--timerange", help="Colon-separated numbers (in seconds) to select. -1 can be used to "
                                           "run until the end of the video.", required=False)
-args.add_argument("--codec", help="4 character code of the codec used to compress the frames",
-                  required=False, default='mp4v')
+args.add_argument("--swaprb", help="Swap red and blue channels for bgr recordings", required=False, action="store_true")
 args = args.parse_args()
+
 # Load video file and define relevant variables
 cap = cv2.VideoCapture(args.path)
-totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-frameRate = cap.get(cv2.CAP_PROP_FPS)
-frameWidth, frameHeight = cap.get(cv2.CAP_PROP_FRAME_WIDTH), cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-bitrate = cap.get(cv2.CAP_PROP_BITRATE)
+totalFrames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+frameRate = int(cap.get(cv2.CAP_PROP_FPS))
+frameWidth, frameHeight = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
 # Define resolution variables
-sliceArea = np.array([i.split(",") for i in [pair for pair in args.slice.split(":")]] if args.slice
-                     else [[0, frameWidth], [0, frameHeight]]).astype(int)
-outRes = [int(i) for i in args.rescale.split("x")] if args.rescale \
-    else [sliceArea[1][0] - sliceArea[0][0], sliceArea[1][1] - sliceArea[0][1]]
+if args.slice:
+    sliceArea = [i.split(",") for i in [pair for pair in args.slice.split(":")]]
+else:
+    sliceArea = [[0, frameWidth], [0, frameHeight]]  # No slice was defined, so the crop is the whole frame
+sliceArea = np.array(sliceArea).astype(int)  # Convert strings in array to integers
 
+# Is this being scaled? If not, output resolution is the frame size
+outRes = [int(i) for i in args.rescale.split("x")] if args.rescale else [sliceArea[1][0], sliceArea[1][1]]
 # Parse frameRange argument
-frameRange = [int(i) for i in args.framerange.split(":")] if args.framerange else \
-    [int(float(i)*frameRate) for i in args.timerange.split(":")] if args.timerange else [0, totalFrames]
+if args.framerange:
+    # Split colon-separated frames
+    frameRange = [int(i) for i in args.framerange.split(":")]
+elif args.timerange:
+    # "Why in the everloving grace of His Holiness Fuck are you casting to float then back to int when you multiply"
+    # - github.com/wundrweapon
+    #
+    # This is the same as frameRange, but because the unit is in seconds it needs to be multiplied by the framerate. The
+    # cast to float and then to int is because the argument is initially provided as a string, but can't be safely cast
+    # to int until after it is converted into a frame number. Does it suck? Yes. Will I fix it? Probably not.
+    frameRange = [int(float(i)*frameRate) for i in args.timerange.split(":")]
+else:
+    # No cut was given, so process the entire file
+    frameRange = [0, totalFrames]
 
 frameRange[1] = totalFrames if frameRange[1] < 0 else frameRange[1]
 totalFrames = frameRange[1] - frameRange[0]
 
-# Create output file
-fourCC = cv2.VideoWriter_fourcc(*args.codec)
-out = cv2.VideoWriter(args.outpath, fourCC, frameRate, (outRes[0], outRes[1]))
-
 # Validity Checks
-aspectRatio = (sliceArea[0][0] - sliceArea[1][0]) / (sliceArea[0][1] - sliceArea[1][1])
-outputAspectRatio = outRes[0] / outRes[1]
-if aspectRatio != outputAspectRatio:
-    print("WARNING: Output resolution and Slice resolution have different aspect ratios! This may lead to distortions.")
 if frameRange[1] < frameRange[0]:
     print("ERROR: Cut can't begin after it ends!")
-    exit(128)
+    exit(1)
 
 # Main loop
 i = 0
+
+# Create output file
+process = (
+    ffmpeg
+        .input('pipe:', format='rawvideo', s='{}x{}'.format(outRes[0], outRes[1]),
+               pix_fmt="bgr24" if args.swaprb else "rgb24")
+        .output(args.outpath, r=frameRate)
+        .run_async(pipe_stdin=True, overwrite_output=True)
+)
+
 while cap.isOpened():
     # Read frame
     ret, frame = cap.read()
     if not ret:
-        exit(0)
-
-    # Progress meter
-    i += 1
-    if i < frameRange[0]:
-        continue
-    if i > frameRange[1]:
-        exit(0)
-    if i > frameRange[0]:
-        print(f"{np.round((i / frameRange[1]) * 100, 2)}%", end="\r")
+        break
 
     # Frame processing
     outFrame = frame
@@ -74,6 +84,8 @@ while cap.isOpened():
         outFrame = outFrame[sliceArea[0][1]:sliceArea[1][1], sliceArea[0][0]:sliceArea[1][0]]
     if args.rescale:
         outFrame = cv2.resize(outFrame, (outRes[0], outRes[1]), fx=0, fy=0, interpolation=cv2.INTER_CUBIC)
-
     # Write frame to file
-    out.write(outFrame)
+    process.stdin.write(outFrame.tobytes())
+
+process.stdin.close()
+process.wait()

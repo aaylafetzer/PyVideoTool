@@ -18,4 +18,4 @@ For simple cropping, VideoTool accepts several arguments that can also be displa
  - ``--rescale | -r`` Will resize the output video to the given x-separated resolution
  - ``--framerange | -f`` Will export only the frames between the colon-separated integers. Use x:-1 to export from frame x to the end of the video.
 ### Other arguments
- - ``--codec`` The [FourCC](http://www.fourcc.org/codecs.php) of the codec used to create the output video
+ - ``--swaprb`` Will swap the red and blue channels for bgr recordings
