@@ -2,7 +2,6 @@ import argparse
 
 import cv2
 import ffmpeg
-from glob import glob
 import numpy as np
 
 args = argparse.ArgumentParser()
@@ -60,9 +59,6 @@ if frameRange[1] < frameRange[0]:
     print("ERROR: Cut can't begin after it ends!")
     exit(1)
 
-# Main loop
-i = 0
-
 # Create output file
 process = (
     ffmpeg
@@ -71,6 +67,8 @@ process = (
         .output(args.outpath)
         .run_async(pipe_stdin=True, overwrite_output=True)
 )
+
+# Main loop
 i = 0
 while cap.isOpened():
     # Read frame
