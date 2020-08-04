@@ -8,12 +8,13 @@ args = argparse.ArgumentParser()
 args.add_argument("path", help="path to the file being cropped")
 args.add_argument("outpath", help="path of the cropped file")
 transformGroup = args.add_argument_group("Transformations")
-transformGroup.add_argument("--slice", "-s", help="colon-separated comma-separated integer slice",
+transformGroup.add_argument("--slice", help="colon-separated comma-separated integer slice",
                             required=False)
-transformGroup.add_argument("--rescale", "-r", help="x-separated integer to scale output video to",
+transformGroup.add_argument("--rescale", help="x-separated integer to scale output video to",
                             required=False)
+transformGroup.add_argument("--flip", help="Flip along the given axis or tuple. See numpy.flip() for more info.")
 cutGroup = args.add_mutually_exclusive_group()
-cutGroup.add_argument("--framerange", "-f", help="Colon-separated frame numbers to select. -1 can be used for "
+cutGroup.add_argument("--framerange", help="Colon-separated frame numbers to select. -1 can be used for "
                                                  "the second frame to run until the end of the video.", required=False)
 cutGroup.add_argument("--timerange", help="Colon-separated numbers (in seconds) to select. -1 can be used to "
                                           "run until the end of the video.", required=False)
@@ -32,6 +33,12 @@ if args.slice:
 else:
     sliceArea = [[0, frameWidth], [0, frameHeight]]  # No slice was defined, so the crop is the whole frame
 sliceArea = np.array(sliceArea)  # Convert strings in array to integers
+
+# Define axes flip
+if args.flip:
+    axesFlip = eval(args.flip)
+else:
+    axesFlip = None
 
 # Is this being scaled? If not, output resolution is the frame size
 outRes = [int(i) for i in args.rescale.split("x")] if args.rescale else [sliceArea[1][0], sliceArea[1][1]]
@@ -89,6 +96,8 @@ while cap.isOpened():
             outFrame = outFrame[sliceArea[0][1]:sliceArea[1][1], sliceArea[0][0]:sliceArea[1][0]]
         if args.rescale:
             outFrame = cv2.resize(outFrame, (outRes[0], outRes[1]), fx=0, fy=0, interpolation=cv2.INTER_CUBIC)
+        if args.flip:
+            outFrame = np.flip(outFrame, axesFlip)
         # Write frame to file
         process.stdin.write(outFrame.tobytes())
 
